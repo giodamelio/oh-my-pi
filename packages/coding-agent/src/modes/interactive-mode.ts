@@ -670,6 +670,24 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.ui.requestRender();
 	}
 
+	async #savePlan(planContent: string, options: { planFilePath: string; finalPlanFilePath: string }): Promise<void> {
+		// Rename in artifacts dir (same as #approvePlan)
+		await renameApprovedPlanFile({
+			planFilePath: options.planFilePath,
+			finalPlanFilePath: options.finalPlanFilePath,
+			getArtifactsDir: () => this.sessionManager.getArtifactsDir(),
+			getSessionId: () => this.sessionManager.getSessionId(),
+		});
+
+		// Write plan to working directory
+		const fileName = options.finalPlanFilePath.replace(/^local:\/\//, "");
+		const outputPath = path.resolve(this.sessionManager.getCwd(), fileName);
+		await Bun.write(outputPath, planContent);
+
+		// Exit plan mode (restores tools/model) but don't clear session
+		await this.#exitPlanMode({ silent: false, paused: false });
+	}
+
 	async #approvePlan(
 		planContent: string,
 		options: { planFilePath: string; finalPlanFilePath: string },
@@ -741,6 +759,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.#renderPlanPreview(planContent);
 		const choice = await this.showHookSelector("Plan mode - next step", [
 			"Approve and execute",
+			"Approve and save",
 			"Refine plan",
 			"Stay in plan mode",
 		]);
@@ -753,6 +772,15 @@ export class InteractiveMode implements InteractiveModeContext {
 				this.showError(
 					`Failed to finalize approved plan: ${error instanceof Error ? error.message : String(error)}`,
 				);
+			}
+			return;
+		}
+		if (choice === "Approve and save") {
+			const finalPlanFilePath = details.finalPlanFilePath || planFilePath;
+			try {
+				await this.#savePlan(planContent, { planFilePath, finalPlanFilePath });
+			} catch (error) {
+				this.showError(`Failed to save plan: ${error instanceof Error ? error.message : String(error)}`);
 			}
 			return;
 		}
