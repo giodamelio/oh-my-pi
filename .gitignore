@@ -54,3 +54,10 @@ pi-*.html
 
 # Generated files
 packages/coding-agent/src/internal-urls/docs-index.generated.ts
+
+
+# Devenv
+.devenv*
+devenv.local.nix
+.pre-commit-config.yaml
+TODO.md
