@@ -667,12 +667,12 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.chatContainer.addChild(new Spacer(1));
 		this.chatContainer.addChild(new Markdown(planContent, 1, 1, getMarkdownTheme()));
 		this.chatContainer.addChild(new DynamicBorder());
-		this.ui.requestRender();
+		this.ui.requestRender(true);
 	}
 
 	async #savePlan(planContent: string, options: { planFilePath: string; finalPlanFilePath: string }): Promise<void> {
 		// Rename in artifacts dir (same as #approvePlan)
-		await renameApprovedPlanFile({
+		const actualFinalPath = await renameApprovedPlanFile({
 			planFilePath: options.planFilePath,
 			finalPlanFilePath: options.finalPlanFilePath,
 			getArtifactsDir: () => this.sessionManager.getArtifactsDir(),
@@ -680,10 +680,12 @@ export class InteractiveMode implements InteractiveModeContext {
 		});
 
 		// Write plan to working directory
-		const fileName = options.finalPlanFilePath.replace(/^local:\/\//, "");
+		const fileName = actualFinalPath.replace(/^local:\/\//, "");
 		const outputPath = path.resolve(this.sessionManager.getCwd(), fileName);
 		await Bun.write(outputPath, planContent);
 
+		this.chatContainer.addChild(new Spacer(1));
+		this.chatContainer.addChild(new Text(theme.fg("dim", `Plan saved to ${outputPath}`), 1, 0));
 		// Exit plan mode (restores tools/model) but don't clear session
 		await this.#exitPlanMode({ silent: false, paused: false });
 	}
@@ -692,7 +694,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		planContent: string,
 		options: { planFilePath: string; finalPlanFilePath: string },
 	): Promise<void> {
-		await renameApprovedPlanFile({
+		const actualFinalPath = await renameApprovedPlanFile({
 			planFilePath: options.planFilePath,
 			finalPlanFilePath: options.finalPlanFilePath,
 			getArtifactsDir: () => this.sessionManager.getArtifactsDir(),
@@ -703,7 +705,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		await this.handleClearCommand();
 		// The new session has a fresh local:// root — persist the approved plan there
 		// so `local://<title>.md` resolves correctly in the execution session.
-		const newLocalPath = resolveLocalUrlToPath(options.finalPlanFilePath, {
+		const newLocalPath = resolveLocalUrlToPath(actualFinalPath, {
 			getArtifactsDir: () => this.sessionManager.getArtifactsDir(),
 			getSessionId: () => this.sessionManager.getSessionId(),
 		});
@@ -711,11 +713,11 @@ export class InteractiveMode implements InteractiveModeContext {
 		if (previousTools.length > 0) {
 			await this.session.setActiveToolsByName(previousTools);
 		}
-		this.session.setPlanReferencePath(options.finalPlanFilePath);
+		this.session.setPlanReferencePath(actualFinalPath);
 		this.session.markPlanReferenceSent();
 		const prompt = renderPromptTemplate(planModeApprovedPrompt, {
 			planContent,
-			finalPlanFilePath: options.finalPlanFilePath,
+			finalPlanFilePath: actualFinalPath,
 		});
 		await this.session.prompt(prompt, { synthetic: true });
 	}
@@ -757,12 +759,11 @@ export class InteractiveMode implements InteractiveModeContext {
 		}
 
 		this.#renderPlanPreview(planContent);
-		const choice = await this.showHookSelector("Plan mode - next step", [
-			"Approve and execute",
-			"Approve and save",
-			"Refine plan",
-			"Stay in plan mode",
-		]);
+		const choice = await this.showHookSelector(
+			"Plan mode - next step",
+			["Approve and execute", "Approve and save", "Refine plan", "Stay in plan mode"],
+			{ inline: true },
+		);
 
 		if (choice === "Approve and execute") {
 			const finalPlanFilePath = details.finalPlanFilePath || planFilePath;
