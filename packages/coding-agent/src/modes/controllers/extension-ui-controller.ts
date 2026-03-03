@@ -19,6 +19,15 @@ import type { InteractiveModeContext } from "../../modes/types";
 import { setTerminalTitle } from "../../utils/title-generator";
 
 export class ExtensionUiController {
+	#hookSelectorOverlay: OverlayHandle | undefined;
+	#hookSelectorInline = false;
+	#hookInputOverlay: OverlayHandle | undefined;
+	#dialogOverlayOptions = {
+		anchor: "bottom-center" as const,
+		width: "100%" as const,
+		maxHeight: "100%" as const,
+		margin: 0,
+	};
 	#extensionTerminalInputUnsubscribers = new Set<() => void>();
 	constructor(private ctx: InteractiveModeContext) {}
 
@@ -600,10 +609,16 @@ export class ExtensionUiController {
 				maxVisible,
 			},
 		);
-		this.ctx.editorContainer.clear();
-		this.ctx.editorContainer.addChild(this.ctx.hookSelector);
-		this.ctx.ui.setFocus(this.ctx.hookSelector);
-		this.ctx.ui.requestRender();
+		if (dialogOptions?.inline) {
+			this.#hookSelectorInline = true;
+			this.ctx.editorContainer.clear();
+			this.ctx.editorContainer.addChild(this.ctx.hookSelector);
+			this.ctx.ui.setFocus(this.ctx.hookSelector);
+			this.ctx.ui.requestRender();
+		} else {
+			this.#hookSelectorInline = false;
+			this.#hookSelectorOverlay = this.ctx.ui.showOverlay(this.ctx.hookSelector, this.#dialogOverlayOptions);
+		}
 		if (dialogOptions?.signal) {
 			if (dialogOptions.signal.aborted) {
 				onAbort();
@@ -618,8 +633,14 @@ export class ExtensionUiController {
 	 */
 	hideHookSelector(): void {
 		this.ctx.hookSelector?.dispose();
-		this.ctx.editorContainer.clear();
-		this.ctx.editorContainer.addChild(this.ctx.editor);
+		if (this.#hookSelectorInline) {
+			this.#hookSelectorInline = false;
+			this.ctx.editorContainer.clear();
+			this.ctx.editorContainer.addChild(this.ctx.editor);
+		} else {
+			this.#hookSelectorOverlay?.hide();
+			this.#hookSelectorOverlay = undefined;
+		}
 		this.ctx.hookSelector = undefined;
 		this.ctx.ui.setFocus(this.ctx.editor);
 		this.ctx.ui.requestRender();

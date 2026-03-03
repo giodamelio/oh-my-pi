@@ -82,6 +82,8 @@ export interface ExtensionUIDialogOptions {
 	onRight?: () => void;
 	/** Optional footer hint text rendered by interactive selector */
 	helpText?: string;
+	/** Render inline at bottom (replacing editor) instead of floating overlay */
+	inline?: boolean;
 }
 
 /** Raw terminal input listener for extensions. */
