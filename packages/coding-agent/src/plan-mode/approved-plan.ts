@@ -15,7 +15,17 @@ function assertLocalUrl(path: string, label: "source" | "destination"): void {
 	}
 }
 
-export async function renameApprovedPlanFile(options: RenameApprovedPlanFileOptions): Promise<void> {
+async function fileExists(filePath: string): Promise<boolean> {
+	try {
+		await fs.stat(filePath);
+		return true;
+	} catch (error) {
+		if (isEnoent(error)) return false;
+		throw error;
+	}
+}
+
+export async function renameApprovedPlanFile(options: RenameApprovedPlanFileOptions): Promise<string> {
 	const { planFilePath, finalPlanFilePath, getArtifactsDir, getSessionId } = options;
 	assertLocalUrl(planFilePath, "source");
 	assertLocalUrl(finalPlanFilePath, "destination");
@@ -25,31 +35,29 @@ export async function renameApprovedPlanFile(options: RenameApprovedPlanFileOpti
 		getSessionId: () => getSessionId(),
 	};
 	const resolvedSource = resolveLocalUrlToPath(planFilePath, resolveOptions);
-	const resolvedDestination = resolveLocalUrlToPath(finalPlanFilePath, resolveOptions);
+
+	// Find a non-conflicting destination path
+	let actualFinalPath = finalPlanFilePath;
+	let resolvedDestination = resolveLocalUrlToPath(actualFinalPath, resolveOptions);
 
 	if (resolvedSource === resolvedDestination) {
-		return;
+		return actualFinalPath;
 	}
 
-	try {
-		const destinationStat = await fs.stat(resolvedDestination);
-		if (destinationStat.isFile()) {
-			throw new Error(
-				`Plan destination already exists at ${finalPlanFilePath}. Choose a different title and call exit_plan_mode again.`,
-			);
-		}
-		throw new Error(`Plan destination exists but is not a file: ${finalPlanFilePath}`);
-	} catch (error) {
-		if (!isEnoent(error)) {
-			throw error;
-		}
+	let counter = 1;
+	while (await fileExists(resolvedDestination)) {
+		counter++;
+		actualFinalPath = finalPlanFilePath.replace(/\.md$/, `-${counter}.md`);
+		resolvedDestination = resolveLocalUrlToPath(actualFinalPath, resolveOptions);
 	}
 
 	try {
 		await fs.rename(resolvedSource, resolvedDestination);
 	} catch (error) {
 		throw new Error(
-			`Failed to rename approved plan from ${planFilePath} to ${finalPlanFilePath}: ${error instanceof Error ? error.message : String(error)}`,
+			`Failed to rename approved plan from ${planFilePath} to ${actualFinalPath}: ${error instanceof Error ? error.message : String(error)}`,
 		);
 	}
+
+	return actualFinalPath;
 }
